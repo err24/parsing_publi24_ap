@@ -1,0 +1,179 @@
+import urllib.request
+#import codecs
+from bs4 import BeautifulSoup, SoupStrainer
+import csv
+import unicodecsv as csv
+import argparse
+import unicodedata
+import sys
+import re
+from urllib.request import Request, urlopen
+import string
+from datetime import datetime
+from multiprocessing import Process, freeze_support
+from mechanize import Browser
+t1=datetime.now()
+#print("timp inceput ",t1)
+
+#pw = wp.read()
+data = []
+data_price = []
+data_name = []
+data_caracteristici = []
+data_link = []
+data_anunt_publicare = []
+data_nr_camere = []
+data_m2 = []
+
+valid_characters = string.printable
+print_time = 1
+quote_page = ["https://www.publi24.ro/anunturi/imobiliare/de-vanzare/apartamente/timis/timisoara/"]
+
+
+
+for i in range(2, 460):
+    quote_page.append("https://www.publi24.ro/anunturi/imobiliare/de-vanzare/apartamente/timis/timisoara/?pag="+str(i))
+
+
+#inceput_parsare = datetime.now()
+#print("parse inceput:", inceput_parsare)
+
+#get data for imobiliare
+def parse_data(quote_page):
+    for pg in quote_page:
+        req = Request(pg,headers={'User-Agent': 'Mozilla/5.0'})
+
+        page = urlopen(req).read()
+        parse_only = SoupStrainer('div', attrs={'class': 'listing-data'})
+        soup = BeautifulSoup(page, 'lxml', from_encoding="utf-8", parse_only=parse_only)
+        #print(soup)
+
+        #page = urlopen(req).read()
+        #soup = BeautifulSoup(page,"lxml")
+
+        name_box = soup.findAll('div', attrs={'class': 'large-8 medium-7 columns'})
+        #price_box = soup.findAll('div', attrs={'class': 'large-4 medium-5 large-text-right medium-text-right columns'})
+
+        price_box = soup.findAll('strong',attrs={'class':['price maincolor','price successcolor']})
+
+        nr_camere_box = soup.findAll('div', attrs={'class': 'listing-data'})
+        #print(nr_camere_box)
+        data_complet = soup.findAll('div', attrs={'class': 'small-12 columns bottom'})  # tot randul /data/nr camere/mp2
+        #detalii_box = soup.findAll('a', attrs={'href': re.compile("https://www.imobiliare.ro/vanzare-apartamente/timisoara/")})
+
+
+
+
+
+        for y in name_box:
+            raw_name = y.text.strip() # strip() is used to remove starting and trailing
+            #data.append(name)
+            #print(raw_name)
+            name = ''.join(''.join(raw_name)) if raw_name else None
+            name_new = ''.join((c for c in unicodedata.normalize('NFD',name) if unicodedata.category(c)!='Mn'))
+            data_name.append(name_new)
+            #print(name_new)
+            try:
+                a = y.find('a')['href']
+            except:
+                continue
+            else:
+                data_link.append(a)
+
+
+        for x in nr_camere_box:
+            #price_raw=x.find('div',attrs={'class':'large-4 medium-5 large-text-right medium-text-right columns'})
+            price_raw=x.find('strong',attrs={'class':['price maincolor','price successcolor','fa fa-arrow-down']})
+            #print(price_raw)
+            if(price_raw):
+                #print(type(price_raw))
+                price_new2 = price_raw.get_text()
+                price_final = ''.join(i for i in price_new2 if i in valid_characters)
+                price_final =price_final.strip()
+                #print(price_final)
+            else:
+                #print(price_raw)
+                price_final=0
+            data_price.append(price_final)
+
+            raw_caracteristici = x.text.strip() # strip() is used to remove starting and trailing
+            caracteristici = ''.join(''.join(raw_caracteristici)) if raw_caracteristici else None
+            caracteristici_new = " ".join(caracteristici.split())
+            caracteristici_new2 = ''.join(i for i in caracteristici_new if i in valid_characters)
+            #print(caracteristici_new2)
+            data_caracteristici.append(caracteristici_new2)
+
+
+
+        for x in data_complet:
+            raw_info = x.text.strip()  # strip() is used to remove starting and trailing
+            info = ''.join(''.join(raw_info)) if raw_info else None
+            info_new = " ".join(info.split())
+
+            splitted_words = info_new.split()
+            counter_words=(len(splitted_words))
+            #print(counter_words)
+
+            if counter_words > 2:
+                data_anunt = splitted_words[0] + ' ' + splitted_words[1]
+                info_m2 = splitted_words[2] + ' ' + splitted_words[3]
+                info_camere = splitted_words[counter_words-2] + ' ' + splitted_words[counter_words-1]
+            else:
+                data_anunt = splitted_words[0] + ' ' + splitted_words[1]
+                info_m2 = ' '
+                info_camere= ' '
+                #print(counter_words)
+
+            if (info_m2 == info_camere and info_m2!= ' ' ):
+                info_camere = 'neprecizat'
+
+            data_anunt = data_anunt.lstrip()
+            info_m2 = info_m2.lstrip()
+            info_camere = info_camere.lstrip()
+
+            data_anunt_publicare.append(data_anunt)
+            data_nr_camere .append(info_camere)
+            data_m2.append(info_m2)
+#parse_data(quote_page)
+
+
+#p.map(parse_data, quote_page)
+#p.terminate()
+#p.join()
+
+#final_parsare = datetime.now()
+#print("parse final:",final_parsare)
+#print("durata parsare",inceput_parsare -final_parsare)
+
+def write_excel():
+    with open('index.csv', 'wb') as csv_file:
+
+        fieldnames = ['Titlu', 'Publicare','PRET','Nr_camere','Suprafata', 'Caracteristici','Link']
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer = csv.writer(csv_file, delimiter=',')
+        data = zip(data_name, data_anunt_publicare, data_price, data_nr_camere,data_m2, data_caracteristici, data_link)
+        data=set(data)
+        for name,publicare, price, camere, suprafata, caracteristici, link in data:
+            #print(publicare)
+            writer.writerow([name ,publicare, price,camere,suprafata, caracteristici, link])
+
+#t2=datetime.now()
+
+#print("timp final",t2)
+#print("durata totala",t2-t1)
+
+
+#parse_data(quote_page)
+#write_excel()
+
+if __name__ == '__main__':
+    freeze_support()
+    p = Process(parse_data(quote_page))
+    x = Process(write_excel())
+    p.start()
+    x.start()
+
+t2=datetime.now()
+#print("timp final ",t2)
+print("durata",t2-t1)
